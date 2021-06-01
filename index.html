@@ -30,7 +30,10 @@
 			let object;
             let object2;
             let objectClone;
-
+            //xray material for global initialization
+            let xrayMat;
+            //setting intersection variable as true to show intersection////CHANGE THIS VALUE FOR INTERSECTION TOGGLE
+            let intersectionToogle = true;
 			init();
 			animate();
 
@@ -39,8 +42,11 @@
                 CameraControls.install( { THREE: THREE } );
 				container = document.createElement( 'div' );
                 document.body.appendChild(container);
-
+                //assiging with xray shader as xray material
+                xrayMat = xrayShader();
+                //Scene for post processing
                 postScene = new THREE.Scene();
+                //Orthogonal camera for post processing scene
                 postCamera = new THREE.OrthographicCamera(
                       -1, // left
                       1, // right
@@ -49,12 +55,15 @@
                       -1, // near,
                       1 // far
                 );
+                //quad geometry for post processing
                 const plane = new THREE.PlaneBufferGeometry(2, 2);
                 postMat = postShaderClone();
-               
+               //quad for post processing
                 quad = new THREE.Mesh(plane,postMat);
                 quad.position.z = -1;
                 postScene.add(quad);
+
+
 				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
 				camera.position.set(0,300,0);
                 camera.up.set(0,0,1);
@@ -79,14 +88,18 @@
 
 					object.traverse( function ( child ) {
                          objectClone = child.clone();
-                         child.material = new THREE.MeshPhongMaterial({
+                       /*  child.material = new THREE.MeshPhongMaterial({
                              depthWrite : false,
                              side : THREE.FrontSide,
                              transparent : true,
                              opacity : 0.6
-                         })
+                         })*/
+
+                        //assigning xray shader
+                        child.material = xrayMat;
 					});
                     object.add(objectClone);
+
                     objectClone.material = createShaderClone();
                     object2.traverse( function ( child ) {
                         child.material = new THREE.MeshStandardMaterial({
@@ -94,7 +107,7 @@
                         transparent: false
                     });
                     });
-                    object2.position.set(117.46, -40.67, 14.66);
+                    object2.position.set(90.46, -40.67, 14.66);
                     object2.scale.set(1.2, 1., 1.);
                     object2.rotation.set(0.2,0.05,-0.38);
                     object2.renderOrder = 1;
@@ -126,7 +139,7 @@
 				function onError() {}
 
 				const loader = new OBJLoader( manager );
-				loader.load( './models/femur.obj', function ( obj ) {
+				loader.load( './models/pelvis.obj', function ( obj ) {
 
 					object = obj;
 
@@ -134,7 +147,7 @@
 
 
                 const loader2 = new OBJLoader( manager );
-				loader2.load( './models/5.obj', function ( obj ) {
+				loader2.load( './models/46.obj', function ( obj ) {
                 
                         object2 = obj;
 
@@ -145,30 +158,41 @@
 				renderer = new THREE.WebGLRenderer({
                     alpha : true
                 });
+                //initializing render target for post processing
                 renderTarget = new THREE.WebGLRenderTarget(
                 window.innerWidth / 1,
                 window.innerHeight / 1
                 );
+                //initializing depth render target for intersection data for post processing
                 depthTarget1 = new THREE.WebGLRenderTarget(
                 window.innerWidth / 1,
                 window.innerHeight / 1
                 );
-                depthTarget1.depthBuffer = true;
-                depthTarget1.depthTexture = new THREE.DepthTexture();
+
+
+                /*
+                //depthTarget1.depthBuffer = true;
+               // depthTarget1.depthTexture = new THREE.DepthTexture();
                 depthTarget2 = new THREE.WebGLRenderTarget(
                 window.innerWidth / 1,
                 window.innerHeight / 1
                 );
-                depthTarget2.depthBuffer = true;
-                depthTarget2.depthTexture = new THREE.DepthTexture();
+
+             //   depthTarget2.depthBuffer = true;
+            //   depthTarget2.depthTexture = new THREE.DepthTexture();
+            */
+                //assging following render target texture to post processing shader for intersection computation
                 postMat.uniforms.p.value = renderTarget.texture;
                 postMat.uniforms.p1.value = depthTarget1.texture;
-                postMat.uniforms.p2.value = depthTarget2.depthTexture;
+               // postMat.uniforms.p2.value = depthTarget2.texture;
+
+
+
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				container.appendChild( renderer.domElement );
                 controls = new CameraControls( camera, renderer.domElement );
-				//
+			
 
 				window.addEventListener( 'resize', onWindowResize );
 
@@ -182,8 +206,10 @@
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
 
-				renderer.setSize( window.innerWidth, window.innerHeight );
-
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                //resizing render targets resolution when window changes it's resolution
+                renderTarget.setSize(window.innerWidth, window.innerHeight);
+                depthTarget1.setSize(window.innerWidth, window.innerHeight);
 			}
 
 
@@ -197,31 +223,35 @@
 			function render() {
                 const delta = clock.getDelta();
                 const hasControlsUpdated = controls.update(delta);
+                if (objectClone) {
+                    //passing camera position to material
+                    objectClone.material.uniforms.campos.value = camera.position;
+                }
+                //getting vector of camera local position
+                var vector = camera.position.clone();
+                //getting camera world position to send to shader for xray shader
+                vector.applyMatrix4(camera.matrixWorld);
+                //sending camera position value to shader(gpu)
+                xrayMat.uniforms.campos.value = vector;
+                //setting depth render target for post processing data
                 renderer.setRenderTarget(depthTarget1);
-                if (object) {
-                   // object.visible = false;
-                    }
+                //indicating xray shader for first type of shader 
+                xrayMat.uniforms.ind.value = 1.5;
+               
                 renderer.render(scene, camera);
-                if (object) {
-                    //object.visible = true;
-                    }
+               
                 renderer.setRenderTarget(null); 
-
-                 renderer.setRenderTarget(depthTarget2);
-                if (object2) {
-                    //object2.visible = false;
-                   // object2.material.depthWrite = true;
-                   // object2.material.transparent = false;
-                    }
-                renderer.render(scene, camera);
-                if (object2) {
-                   // object2.visible = true;
-                    }
-                renderer.setRenderTarget(null); 
-
+               
+                //indicating xray shader for second type of shader 
+                xrayMat.uniforms.ind.value = 0.5;
+                //setting another render target for scene texture
                 renderer.setRenderTarget(renderTarget);
                 renderer.render(scene, camera);
                 renderer.setRenderTarget(null);
+
+                //sending intersection value to shader weather to show intersection or not
+                postMat.uniforms.intersection.value = intersectionToogle;
+                //doing final post processing by rendering quad
                 renderer.render(postScene, postCamera);
 
             }
@@ -232,9 +262,11 @@
                     // @ts-ignore
                         p: { value: null },
                         p1: { value: null },
-                        p2: { value: null},
+                        intersection: {value:null},
+                       // p2: { value: null},
                     // @ts-ignore
-                    glowColor: {type: 'c', value: new THREE.Color(0xFFFFFF)},
+                        //setting intersection color
+                    intersectionColor: {type: 'c', value: new THREE.Color(0xFF0000)},
                     },
                     vertexShader: `
                      
@@ -250,19 +282,22 @@
                     fragmentShader: `
                         uniform sampler2D p;
                         uniform sampler2D p1;
-                        uniform sampler2D p2;
+uniform bool intersection;
+                       // uniform sampler2D p2;
+uniform vec3 intersectionColor;
                         varying vec2 vUv;
                         void main()
                         {
-                            vec4 col = vec4(texture2D(p,vUv));
+                            vec4 col1 = vec4(texture2D(p,vUv));
+ vec4 col = vec4(texture2D(p1,vUv));
 float a = 0.0;
 if(col.r>0.35){
 a = 1.0;
 }
+  gl_FragColor =mix(col1,vec4(intersectionColor,1.),col.a*a);
+if(!intersection){
+                           gl_FragColor =col1;}
 
-                           gl_FragColor =vec4(col.a)*vec4(0.,1.,0.,0.)*a+col;
-//gl_FragColor = vec4(a);
-//gl_FragColor = vec4(col.rgb*0.5,1.);
                         }
                         `
                   
@@ -274,18 +309,20 @@ a = 1.0;
                 {
                     uniforms: {
                     // @ts-ignore
-                    p: {type: 'f', value: 0.44},
+                        p: { type: 'f', value: 0.44 },
+                        campos: { value:null },
                     // @ts-ignore
                     glowColor: {type: 'c', value: new THREE.Color(0xFFFFFF)},
                     },
                     vertexShader: `
                         uniform float p;
                         varying float intensity;
+                        varying vec3 vNormal;
                         #include <clipping_planes_pars_vertex>
                         void main()
                         {
                             #include <begin_vertex>
-                            vec3 vNormal = normalize( normalMatrix * normal );
+                             vNormal = normalize( normalMatrix * normal );
                             intensity = pow(1.0 - abs(dot(vNormal, vec3(0, 0, 1))), p);
                             gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
                             #include <project_vertex>
@@ -294,19 +331,111 @@ a = 1.0;
                     `,
                     fragmentShader: `
                         uniform vec3 glowColor;
+                        uniform vec3 campos;
                         varying float intensity;
+                        varying vec3 vNormal;
                         #include <clipping_planes_pars_fragment>
                         void main()
                         {
                         #include <clipping_planes_fragment>
+                        float sp = clamp(1.-dot(campos,normalize(vNormal)),-100.,100.);
                             vec3 glow = glowColor * intensity;
-                            gl_FragColor = vec4( glow, 1 );
+                            gl_FragColor = vec4( -1.,-1.,-1., 1 );
                         }
                         `,
                     side: THREE.BackSide,
-                    blending: THREE.SubtractiveBlending,
+                   blending: THREE.SubtractiveBlending,
                     transparent: true,
                     depthWrite: false,
+                });
+            }
+
+            function xrayShader() {
+                return new THREE.ShaderMaterial(
+                {
+                    uniforms: {
+                    // @ts-ignore
+                      
+                        campos: { value: null },
+                        ind: {type:'f',value:0.0 },
+                    // @ts-ignore
+                    glowColor: {type: 'c', value: new THREE.Color(0xFFFFFF)},
+                    },
+                    vertexShader: `
+                        uniform float p;
+                        varying float intensity;
+varying vec4 pos;
+                        varying vec3 vNormal;
+                      //  #include <clipping_planes_pars_vertex>
+                        void main()
+                        {
+                            #include <begin_vertex>
+                             vNormal = normalize( mat3(modelMatrix) * normal );
+pos = modelMatrix*vec4( position, 1.0 );
+                            intensity = pow(1.0 - abs(dot(vNormal, vec3(0, 0, 1))), p);
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+                           // #include <project_vertex>
+                            //#include <clipping_planes_vertex>
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform vec3 glowColor;
+                        uniform vec3 campos;
+                        varying float intensity;
+                        uniform float ind;
+varying vec4 pos;
+                        varying vec3 vNormal;
+                        //#include <clipping_planes_pars_fragment>
+
+float hash(vec3 p)  // replace this by something better
+{
+    p  = fract( p*0.3183099+.1 );
+	p *= 17.0;
+    return fract( p.x*p.y*p.z*(p.x+p.y+p.z) );
+}
+
+float noise( in vec3 x )
+{
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+    f = f*f*(3.0-2.0*f);
+	
+    return mix(mix(mix( hash(i+vec3(0,0,0)), 
+                        hash(i+vec3(1,0,0)),f.x),
+                   mix( hash(i+vec3(0,1,0)), 
+                        hash(i+vec3(1,1,0)),f.x),f.y),
+               mix(mix( hash(i+vec3(0,0,1)), 
+                        hash(i+vec3(1,0,1)),f.x),
+                   mix( hash(i+vec3(0,1,1)), 
+                        hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+
+float fbm(vec3 uv){
+
+float f  = 0.5000*noise( uv*8. ); //uv = m*uv;
+		f += 0.2500*noise( uv*16. ); //uv = m*uv;
+		f += 0.1250*noise( uv*32. ); //uv = m*uv;
+		f += 0.0625*noise( uv*64. ); //uv = m*uv;
+return f;
+}
+                        void main()
+                        {
+                        //#include <clipping_planes_fragment>
+                        float sp = dot(normalize(campos-pos.xyz),normalize(vNormal));
+float n = fbm(pos.xyz*0.012);
+sp = 1.-smoothstep(0.0,.1,sp);
+                           // vec3 glow = glowColor * intensity;
+float k = n+sp;
+                            gl_FragColor = vec4(vec3(n)+sp*0.4,clamp(n+sp*0.3,0.,1.) );
+if(ind>1.0){
+gl_FragColor = vec4(1.,1.,1.,0.6 );}
+                        }
+                        `,
+               depthWrite : false,
+                             side : THREE.FrontSide,
+                  
+                    transparent: true,
+                    
                 });
              }
 
